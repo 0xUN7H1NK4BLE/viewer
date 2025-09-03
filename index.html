@@ -1,0 +1,1830 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vulnerability Report Viewer</title>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.1.6/purify.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.0/papaparse.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        :root {
+            --primary: #3a86ff;
+            --critical: #d90429;
+            --high: #ef233c;
+            --medium: #ff9e00;
+            --low: #4cc9f0;
+            --info: #8d99ae;
+            --bg: #f9fafb;
+            --card: #ffffff;
+            --text: #1f2a44;
+            --text-light: #6b7280;
+            --border: #e5e7eb;
+            --shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+            --border-radius: 6px;
+            --code-bg: #f1f5f9;
+            --blockquote-bg: #f8fafc;
+        }
+
+        /* Dark mode variables */
+        [data-theme="dark"] {
+            --primary: #60a5fa;
+            --critical: #f87171;
+            --high: #fb7185;
+            --medium: #fbbf24;
+            --low: #22d3ee;
+            --info: #94a3b8;
+            --bg: #0f172a;
+            --card: #1e293b;
+            --text: #f1f5f9;
+            --text-light: #cbd5e1;
+            --border: #334155;
+            --shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+            --code-bg: #1e293b;
+            --blockquote-bg: #334155;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            line-height: 1.6;
+            padding: 0;
+            margin: 0;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        header {
+            background-color: var(--card);
+            padding: 1.25rem 1.5rem;
+            border-bottom: 1px solid var(--border);
+            box-shadow: var(--shadow);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        h1 {
+            font-size: 1.5rem;
+            font-weight: 600;
+            color: var(--primary);
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        h1 i {
+            font-size: 1.25rem;
+        }
+
+        .container {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+            padding: 1.5rem 0;
+            gap: 0;
+            position: relative;
+        }
+
+        .input-container {
+            background-color: var(--card);
+            padding: 1.25rem;
+            margin: 0 1.5rem 1.5rem;
+            border-radius: var(--border-radius);
+            box-shadow: var(--shadow);
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+        }
+
+        input {
+            flex: 1;
+            padding: 0.75rem 1rem;
+            border: 1px solid var(--border);
+            border-radius: var(--border-radius);
+            font-size: 0.95rem;
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+
+        input:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(58, 134, 255, 0.1);
+        }
+
+        button {
+            padding: 0.75rem 1.5rem;
+            background-color: var(--primary);
+            color: white;
+            border: none;
+            border-radius: var(--border-radius);
+            font-size: 0.95rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background-color 0.2s, transform 0.1s;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        button:hover {
+            background-color: #2563eb;
+            transform: translateY(-1px);
+        }
+
+        button:focus {
+            outline: none;
+            box-shadow: 0 0 0 3px rgba(58, 134, 255, 0.3);
+        }
+
+        .list-container {
+            flex: 1;
+            background-color: var(--card);
+            border-radius: var(--border-radius);
+            box-shadow: var(--shadow);
+            display: flex;
+            flex-direction: column;
+            min-width: 320px;
+            word-break: break-word;
+            overflow-wrap: anywhere;
+            overflow-x: hidden;
+            transition: width 0.4s cubic-bezier(.4,1.4,.6,1), min-width 0.4s, max-width 0.4s, flex 0.4s, opacity 0.3s;
+        }
+        .list-container .list-header, .list-container .list-items {
+            transition: opacity 0.3s cubic-bezier(.4,1.4,.6,1);
+        }
+        .list-container.fading-out .list-header,
+        .list-container.fading-out .list-items {
+            opacity: 0;
+            pointer-events: none;
+        }
+        .list-container.fading-in .list-header,
+        .list-container.fading-in .list-items {
+            opacity: 1;
+            pointer-events: auto;
+        }
+        .report-container {
+            flex: 2;
+            background-color: var(--card);
+            border-radius: var(--border-radius);
+            box-shadow: var(--shadow);
+            display: flex;
+            flex-direction: column;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .list-header {
+            padding: 1rem;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            flex-wrap: wrap;
+            gap: 1rem;
+            background-color: var(--card);
+            align-items: flex-start;
+        }
+
+        .search-container, .program-search-container {
+            flex: 1;
+            position: relative;
+            min-width: 200px;
+            display: flex;
+            flex-direction: column;
+            gap: 0.25rem;
+        }
+        .search-container label, .program-search-container label {
+            font-size: 0.85rem;
+            font-weight: 500;
+            color: var(--text-light);
+        }
+        .search-container i, .program-search-container i {
+            position: absolute;
+            left: 1rem;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--text-light);
+            font-size: 0.9rem;
+        }
+        .search-container input, .program-search-container input {
+            width: 100%;
+            padding-left: 2.5rem;
+            font-size: 0.9rem;
+        }
+        .severity-filter, .status-filter, .sort-filter {
+            min-width: 150px;
+            display: flex;
+            flex-direction: column;
+            gap: 0.25rem;
+        }
+        .severity-filter label, .status-filter label, .sort-filter label {
+            font-size: 0.85rem;
+            font-weight: 500;
+            color: var(--text-light);
+        }
+        .severity-filter select, .status-filter select, .sort-filter select {
+            width: 100%;
+            padding: 0.75rem;
+            border: 1px solid var(--border);
+            border-radius: var(--border-radius);
+            font-size: 0.9rem;
+            background-color: var(--bg);
+            color: var(--text);
+            cursor: pointer;
+            transition: border-color 0.2s;
+        }
+        .severity-filter select:focus, .status-filter select:focus, .sort-filter select:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(58, 134, 255, 0.1);
+        }
+        .report-count {
+            font-size: 0.9rem;
+            color: var(--text-light);
+            font-weight: 500;
+            align-self: center;
+        }
+        @media (max-width: 768px) {
+            .list-header {
+                flex-direction: column;
+                gap: 0.75rem;
+            }
+            .search-container, .program-search-container, .severity-filter, .status-filter, .sort-filter {
+                min-width: auto;
+                width: 100%;
+            }
+            .search-container label, .program-search-container label, 
+            .severity-filter label, .status-filter label, .sort-filter label {
+                display: none;
+            }
+        }
+
+        .list-items {
+            flex: 1;
+            overflow-y: auto;
+        }
+
+        .list-item {
+            padding: 1rem;
+            border-bottom: 1px solid var(--border);
+            cursor: pointer;
+            transition: background-color 0.2s;
+            word-break: break-word;
+            overflow-wrap: anywhere;
+            overflow-x: hidden;
+        }
+
+        .list-item:hover {
+            background-color: rgba(58, 134, 255, 0.05);
+        }
+
+        .list-item.selected {
+            background-color: rgba(58, 134, 255, 0.1);
+            border-left: 4px solid var(--primary);
+            padding-left: 0.75rem;
+        }
+
+        .program-name {
+            font-weight: 600;
+            color: var(--primary);
+            font-size: 1rem;
+            margin-bottom: 0.25rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .report-number {
+            font-weight: 700;
+            color: var(--text-light);
+            font-size: 0.95rem;
+        }
+
+        .report-title {
+            font-size: 0.95rem;
+            color: var(--text);
+            margin-bottom: 0.5rem;
+        }
+
+        .severity {
+            display: inline-block;
+            padding: 0.3rem 0.6rem;
+            border-radius: 4px;
+            font-size: 0.8rem;
+            font-weight: 500;
+            text-transform: capitalize;
+        }
+
+        .critical { background-color: rgba(217, 4, 41, 0.1); color: var(--critical); }
+        .high { background-color: rgba(239, 35, 60, 0.1); color: var(--high); }
+        .medium { background-color: rgba(255, 158, 0, 0.1); color: var(--medium); }
+        .low { background-color: rgba(76, 201, 240, 0.1); color: var(--low); }
+        .info { background-color: rgba(141, 153, 174, 0.1); color: var(--info); }
+
+        .report-date {
+            font-size: 0.8rem;
+            color: var(--text-light);
+            margin-top: 0.5rem;
+        }
+
+        .report-content {
+            flex: 1;
+            padding: 2rem;
+            overflow-y: auto;
+            font-size: 1rem;
+            line-height: 1.75;
+            background-color: var(--card);
+            color: var(--text);
+        }
+
+        .report-content .metadata {
+            background-color: var(--bg);
+            padding: 1.5rem;
+            border-radius: var(--border-radius);
+            margin-bottom: 2rem;
+            box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.05);
+        }
+
+        .report-content .metadata h2 {
+            font-size: 1.5rem;
+            font-weight: 600;
+            color: var(--primary);
+            margin-bottom: 1rem;
+            border-bottom: 2px solid var(--border);
+            padding-bottom: 0.5rem;
+        }
+
+        .report-content .metadata dl {
+            display: grid;
+            grid-template-columns: minmax(120px, auto) 1fr;
+            gap: 0.75rem 1.5rem;
+        }
+
+        .report-content .metadata dt {
+            font-weight: 600;
+            color: var(--text-light);
+            font-size: 0.9rem;
+        }
+
+        .report-content .metadata dd {
+            font-size: 0.95rem;
+            color: var(--text);
+        }
+
+        .report-content .metadata .severity {
+            display: inline-block;
+            margin-top: 0.25rem;
+        }
+
+        .report-content .report-body h1 {
+            font-size: 1.75rem;
+            font-weight: 700;
+            color: var(--primary);
+            margin: 0 0 1.5rem;
+            border-bottom: 2px solid var(--border);
+            padding-bottom: 0.5rem;
+        }
+
+        .report-content .report-body h2 {
+            font-size: 1.5rem;
+            font-weight: 600;
+            color: var(--primary);
+            margin: 2rem 0 1rem;
+        }
+
+        .report-content .report-body h3 {
+            font-size: 1.25rem;
+            font-weight: 500;
+            color: var(--text);
+            margin: 1.5rem 0 0.75rem;
+        }
+
+        .report-content .report-body p {
+            margin: 0 0 1.25rem;
+            color: var(--text);
+        }
+
+        .report-content .report-body ul,
+        .report-content .report-body ol {
+            margin: 0 0 1.25rem;
+            padding-left: 1.5rem;
+        }
+
+        .report-content .report-body li {
+            margin-bottom: 0.5rem;
+        }
+
+        .report-content .report-body pre {
+            background-color: var(--code-bg);
+            padding: 1.25rem;
+            border-radius: var(--border-radius);
+            overflow-x: auto;
+            margin: 0 0 1.5rem;
+            box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.05);
+            font-size: 0.9rem;
+            line-height: 1.5;
+        }
+
+        .report-content .report-body code {
+            font-family: 'Courier New', monospace;
+            background-color: var(--code-bg);
+            padding: 0.2rem 0.4rem;
+            border-radius: 3px;
+            font-size: 0.9rem;
+            color: #1f2a44;
+        }
+
+        .report-content .report-body pre code {
+            background: none;
+            padding: 0;
+        }
+
+        .report-content .report-body blockquote {
+            border-left: 4px solid var(--primary);
+            background-color: var(--blockquote-bg);
+            padding: 1rem 1.5rem;
+            margin: 0 0 1.5rem;
+            color: var(--text-light);
+            font-style: italic;
+            border-radius: 0 var(--border-radius) var(--border-radius) 0;
+        }
+
+        .report-content .report-body a {
+            color: var(--primary);
+            text-decoration: none;
+            transition: color 0.2s;
+        }
+
+        .report-content .report-body a:hover {
+            color: #2563eb;
+            text-decoration: underline;
+        }
+
+        .report-content .report-body img {
+            max-width: 100%;
+            height: auto;
+            border-radius: var(--border-radius);
+            margin: 0 0 1.5rem;
+            box-shadow: var(--shadow);
+        }
+
+        .report-content .report-body table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 0 0 1.5rem;
+            background-color: var(--card);
+        }
+
+        .report-content .report-body th,
+        .report-content .report-body td {
+            padding: 0.75rem;
+            border: 1px solid var(--border);
+            text-align: left;
+        }
+
+        .report-content .report-body th {
+            background-color: var(--bg);
+            font-weight: 600;
+            color: var(--primary);
+        }
+
+        .report-content .report-body tr:nth-child(even) {
+            background-color: var(--blockquote-bg);
+        }
+
+        .loading, .empty-state {
+            padding: 2rem;
+            text-align: center;
+            color: var(--text-light);
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .loading i, .empty-state i {
+            font-size: 1.5rem;
+            margin-bottom: 0.75rem;
+            color: var(--primary);
+        }
+
+        .error {
+            padding: 1rem;
+            background-color: rgba(239, 35, 60, 0.1);
+            color: var(--high);
+            margin: 0 1.5rem 1.5rem;
+            border-radius: var(--border-radius);
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            font-size: 0.9rem;
+        }
+
+        .error i {
+            font-size: 1.2rem;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                flex-direction: column;
+                padding: 1rem;
+            }
+
+            .input-container {
+                flex-direction: column;
+                margin: 0 1rem 1rem;
+            }
+
+            input, button {
+                width: 100%;
+            }
+
+            .list-container, .report-container {
+                min-width: auto;
+            }
+
+            .list-header {
+                flex-direction: column;
+                gap: 0.75rem;
+            }
+
+            .search-container, .program-search-container, .severity-filter, .status-filter, .sort-filter {
+                min-width: auto;
+                width: 100%;
+            }
+
+            .search-container label, .program-search-container label, 
+            .severity-filter label, .status-filter label, .sort-filter label {
+                display: none;
+            }
+
+            .report-content {
+                padding: 1.5rem;
+            }
+
+            .report-content .metadata {
+                padding: 1rem;
+            }
+
+            .report-content .metadata dl {
+                grid-template-columns: 1fr;
+            }
+
+            .report-content .report-body h1 {
+                font-size: 1.5rem;
+            }
+
+            .report-content .report-body h2 {
+                font-size: 1.25rem;
+            }
+
+            .report-content .report-body h3 {
+                font-size: 1.1rem;
+            }
+
+            .report-content .report-body pre {
+                font-size: 0.85rem;
+            }
+        }
+
+        .theme-toggle {
+            background: none;
+            border: 1px solid var(--border);
+            color: var(--text);
+            padding: 0.5rem;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .theme-toggle:hover {
+            background-color: var(--bg);
+            transform: scale(1.05);
+        }
+
+        .theme-toggle:focus {
+            outline: none;
+            box-shadow: 0 0 0 3px rgba(58, 134, 255, 0.3);
+        }
+
+        [data-theme="dark"] .theme-toggle {
+            border-color: var(--border);
+        }
+
+        [data-theme="dark"] .report-content .report-body a {
+            color: #7dd3fc;
+            text-decoration: underline;
+        }
+        [data-theme="dark"] input,
+        [data-theme="dark"] .search-container input,
+        [data-theme="dark"] .program-search-container input {
+            background-color: #1e293b;
+            color: #f1f5f9;
+            border: 1px solid #334155;
+        }
+        [data-theme="dark"] input::placeholder,
+        [data-theme="dark"] .search-container input::placeholder,
+        [data-theme="dark"] .program-search-container input::placeholder {
+            color: #94a3b8;
+            opacity: 1;
+        }
+
+        [data-theme="dark"] .report-content .report-body code {
+            color: #f1f5f9;
+            background-color: #1e293b;
+        }
+
+        /* Custom dropdown styles for multi-select checkboxes */
+        .custom-multiselect {
+            border: 1px solid var(--border);
+            border-radius: var(--border-radius);
+            background: var(--bg);
+            cursor: pointer;
+            min-width: 150px;
+            position: relative;
+            user-select: none;
+            margin-bottom: 0.25rem;
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+        .custom-multiselect:focus, .custom-multiselect.open {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(58, 134, 255, 0.1);
+        }
+        .custom-multiselect:hover {
+            border-color: var(--primary);
+        }
+        .selected-summary {
+            padding: 0.75rem 1rem;
+            color: var(--text);
+            font-size: 0.9rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .dropdown-arrow {
+            margin-left: 0.5rem;
+            font-size: 1rem;
+            color: var(--text-light);
+            transition: transform 0.2s;
+        }
+        .custom-multiselect.open .dropdown-arrow {
+            transform: rotate(180deg);
+        }
+        .dropdown-panel {
+            position: absolute;
+            left: 0;
+            top: 100%;
+            z-index: 10;
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: var(--border-radius);
+            box-shadow: var(--shadow);
+            min-width: 100%;
+            padding: 0.5rem 0.75rem 0.5rem 0.75rem;
+            margin-top: 0.25rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.25rem;
+            animation: fadeIn 0.15s;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-8px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .dropdown-panel label {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            font-size: 1rem;
+            cursor: pointer;
+            padding: 0.4rem 0.2rem;
+            border-radius: 4px;
+            transition: background 0.15s;
+        }
+        .dropdown-panel label:hover, .dropdown-panel label:focus-within {
+            background: var(--bg);
+        }
+        .dropdown-panel input[type=checkbox] {
+            accent-color: var(--primary);
+            width: 1.1em;
+            height: 1.1em;
+        }
+        .dropdown-panel .clear-btn {
+            margin-top: 0.5rem;
+            align-self: flex-end;
+            background: none;
+            border: none;
+            color: var(--primary);
+            font-size: 0.95rem;
+            cursor: pointer;
+            padding: 0.2rem 0.5rem;
+            border-radius: 4px;
+            transition: background 0.15s;
+        }
+        .dropdown-panel .clear-btn:hover {
+            background: var(--bg);
+        }
+        @media (max-width: 768px) {
+            .dropdown-panel {
+                min-width: 220px;
+                left: 0;
+                right: 0;
+            }
+            .custom-multiselect {
+                min-width: 100%;
+            }
+        }
+
+        /* Minimize/Maximize styles */
+        #minMaxDivider {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 1px;
+            min-width: 1px;
+            background: var(--border);
+            position: relative;
+            z-index: 2;
+            transition: background 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        #minMaxDivider::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            left: 50%;
+            width: 2px;
+            background: var(--primary);
+            transform: translateX(-50%) scaleY(0);
+            transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            border-radius: 1px;
+        }
+        .container.minimized #minMaxDivider::before {
+            transform: translateX(-50%) scaleY(1);
+        }
+        #minMaxBtn {
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            transform: translate(-50%, -50%);
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            width: 28px;
+            height: 60px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            cursor: pointer;
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            color: var(--text-light);
+            font-size: 12px;
+            overflow: hidden;
+        }
+        #minMaxBtn::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: var(--primary);
+            transform: translateY(100%);
+            transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            z-index: -1;
+        }
+        #minMaxBtn:hover::before {
+            transform: translateY(0);
+        }
+        #minMaxBtn:hover {
+            color: white;
+            border-color: var(--primary);
+            box-shadow: 0 6px 20px rgba(58, 134, 255, 0.3);
+            transform: translate(-50%, -50%) scale(1.05);
+        }
+        #minMaxBtn:active {
+            transform: translate(-50%, -50%) scale(0.98);
+            transition: all 0.1s ease;
+        }
+        #minMaxBtn:focus {
+            outline: none;
+            box-shadow: 0 0 0 3px rgba(58, 134, 255, 0.2);
+        }
+        #minMaxBtn i {
+            font-size: 12px;
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+            z-index: 1;
+        }
+        .container.minimized #minMaxBtn {
+            background: var(--primary);
+            color: white;
+            border-color: var(--primary);
+            box-shadow: 0 6px 20px rgba(58, 134, 255, 0.3);
+        }
+        .container.minimized #minMaxBtn::before {
+            transform: translateY(0);
+        }
+        .container.minimized #minMaxBtn i {
+            transform: rotate(180deg);
+        }
+        .container #listContainer {
+            transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+            transform-origin: left center;
+        }
+        .container.minimized #listContainer {
+            width: 0 !important;
+            min-width: 0 !important;
+            max-width: 0 !important;
+            flex: 0 0 0 !important;
+            overflow: hidden !important;
+            opacity: 0;
+            transform: translateX(-20px) scaleX(0.95);
+        }
+        .container.minimized .report-container {
+            flex: 1 1 100%;
+            max-width: 100%;
+            transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+            transform: scaleX(1.02);
+        }
+        @media (max-width: 768px) {
+            #minMaxBtn {
+                width: 24px;
+                height: 50px;
+            }
+            #minMaxBtn i {
+                font-size: 10px;
+            }
+        }
+
+        .input-header-row {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.5rem 1rem 0.5rem 1rem;
+            background: var(--card);
+            border-radius: 10px;
+            border: 1px solid var(--border);
+            box-shadow: 0 1px 4px rgba(31,42,68,0.06);
+            margin: 0.75rem 0.75rem 0.5rem 0.75rem;
+            min-height: unset;
+        }
+        @media (max-width: 768px) {
+            .input-header-row {
+                flex-direction: column;
+                gap: 0.5rem;
+                padding: 0.5rem 0.5rem 0.5rem 0.5rem;
+                margin: 0.5rem;
+            }
+            .input-header-row .input-container, .input-header-row .theme-toggle {
+                width: 100%;
+                margin-left: 0 !important;
+            }
+        }
+        .input-header-row .input-container input {
+            font-size: 0.95rem;
+            padding: 0.5rem 0.75rem;
+            border-radius: 6px;
+            border: 1px solid var(--border);
+            background: var(--bg);
+            min-width: 0;
+        }
+        .input-header-row .input-container button {
+            font-size: 0.95rem;
+            padding: 0.5rem 1rem;
+            border-radius: 6px;
+        }
+        .input-header-row .theme-toggle {
+            width: 36px;
+            height: 36px;
+            min-width: 36px;
+            min-height: 36px;
+            font-size: 1.1rem;
+            margin-left: 0.5rem;
+        }
+        
+
+    </style>
+</head>
+<body>
+    <div class="input-header-row">
+        <div class="input-container" style="margin: 0; flex: 1;">
+            <input type="text" id="csvUrl" placeholder="Google Sheets URL" 
+                   value="https://docs.google.com/spreadsheets/d/{YOUR_SHEET_ID}/edit#gid=0">
+            <button id="loadButton"><i class="fas fa-download"></i> Load</button>
+        </div>
+        <button id="themeToggle" class="theme-toggle" title="Toggle dark mode" style="margin-left: 1rem;">
+            <i class="fas fa-moon"></i>
+        </button>
+    </div>
+    
+    <div id="error" class="error" style="display: none;">
+        <i class="fas fa-exclamation-circle"></i>
+        <div id="error-message"></div>
+    </div>
+    
+    <div class="container">
+        <div class="list-container" id="listContainer">
+            <div class="list-header">
+                <div class="search-container">
+                    <label for="searchInput">Search All Fields</label>
+                    <input type="text" id="searchInput" placeholder="Search all fields (regex supported)..." oninput="filterReports()">
+                </div>
+                <div class="program-search-container">
+                    <label for="programSearch">Search Program Name</label>
+                    <input type="text" id="programSearch" placeholder="Search Program Name..." oninput="filterReports()">
+                </div>
+                <div class="search-container">
+                    <label for="regexInput">Negative Regex Search</label>
+                    <input type="text" id="regexInput" placeholder="Exclude pattern (regex)..." oninput="filterReports()">
+                </div>
+                <div class="severity-filter" id="severityFilterGroup" style="position: relative;">
+                    <label>Severity</label>
+                    <div class="custom-multiselect" id="severityDropdown" tabindex="0">
+                        <div class="selected-summary" id="severitySummary">All Severities <span class="dropdown-arrow"><i class="fas fa-chevron-down"></i></span></div>
+                        <div class="dropdown-panel" id="severityPanel" style="display: none;"></div>
+                    </div>
+                </div>
+                <div class="status-filter" id="statusFilterGroup" style="position: relative;">
+                    <label>Status</label>
+                    <div class="custom-multiselect" id="statusDropdown" tabindex="0">
+                        <div class="selected-summary" id="statusSummary">All Statuses <span class="dropdown-arrow"><i class="fas fa-chevron-down"></i></span></div>
+                        <div class="dropdown-panel" id="statusPanel" style="display: none;"></div>
+                    </div>
+                </div>
+                <div class="sort-filter">
+                    <label for="sortFilter">Sort</label>
+                    <select id="sortFilter" onchange="sortReports()">
+                        <option value="newest">Newest First</option>
+                        <option value="oldest">Oldest First</option>
+                        <option value="severity">Severity (Critical > Info)</option>
+                        <option value="program">Program Name (A-Z)</option>
+                        <option value="status">Status (A-Z)</option>
+                        <option value="title">Report Title (A-Z)</option>
+                    </select>
+                </div>
+                <div class="report-count" id="reportCount">Reports: 0</div>
+            </div>
+            <div class="list-items" id="reportList">
+                <div class="empty-state">
+                    <i class="fas fa-file-import"></i>
+                    <p>Load data to view reports</p>
+                </div>
+            </div>
+        </div>
+        <!-- Minimize/Maximize Button -->
+        <div id="minMaxDivider">
+            <button id="minMaxBtn" title="Minimize left panel">
+                <i class="fas fa-angle-left"></i>
+            </button>
+        </div>
+        <div class="report-container">
+            <div class="report-content" id="reportContent">
+                <div class="empty-state">
+                    <i class="fas fa-file-alt"></i>
+                    <p>Select a report to view details</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let reports = [];
+        let filteredReports = [];
+        let statusOptions = new Set();
+        let dateFields = ['Published Date', 'Date', 'Created', 'Submitted', 'Reported'];
+
+        // Theme management
+        let currentTheme = localStorage.getItem('theme') || 'light';
+        
+        // URL and localStorage management
+        function getUrlParameter(name) {
+            const urlParams = new URLSearchParams(window.location.search);
+            return urlParams.get(name);
+        }
+        
+        function saveUrlToHistory(url) {
+            if (!url || url.trim() === '') return;
+            
+            let urlHistory = JSON.parse(localStorage.getItem('urlHistory') || '[]');
+            
+            // Remove if already exists
+            urlHistory = urlHistory.filter(item => item !== url);
+            
+            // Add to beginning
+            urlHistory.unshift(url);
+            
+            // Keep only last 10 URLs
+            urlHistory = urlHistory.slice(0, 10);
+            
+            localStorage.setItem('urlHistory', JSON.stringify(urlHistory));
+        }
+        
+        function getUrlHistory() {
+            return JSON.parse(localStorage.getItem('urlHistory') || '[]');
+        }
+        
+        // Initialize theme
+        function initializeTheme() {
+            document.documentElement.setAttribute('data-theme', currentTheme);
+            updateThemeIcon();
+        }
+
+        // Toggle theme
+        function toggleTheme() {
+            currentTheme = currentTheme === 'light' ? 'dark' : 'light';
+            document.documentElement.setAttribute('data-theme', currentTheme);
+            localStorage.setItem('theme', currentTheme);
+            updateThemeIcon();
+        }
+
+        // Update theme icon
+        function updateThemeIcon() {
+            const themeToggle = document.getElementById('themeToggle');
+            const icon = themeToggle.querySelector('i');
+            
+            if (currentTheme === 'dark') {
+                icon.className = 'fas fa-sun';
+                themeToggle.title = 'Switch to light mode';
+            } else {
+                icon.className = 'fas fa-moon';
+                themeToggle.title = 'Switch to dark mode';
+            }
+        }
+
+        // Initialize theme on page load
+        initializeTheme();
+
+        // Add event listener for theme toggle
+        document.getElementById('themeToggle').addEventListener('click', toggleTheme);
+
+        // Configure marked for better markdown rendering
+        marked.setOptions({
+            breaks: true,
+            gfm: true
+        });
+
+        // Add event listener for load button
+        document.getElementById('loadButton').addEventListener('click', loadCSV);
+        // Add event listener for Enter key on URL input
+        document.getElementById('csvUrl').addEventListener('keydown', function(event) {
+            if (event.key === 'Enter') {
+                loadCSV();
+            }
+        });
+        
+        // Initialize URL from parameter or localStorage
+        function initializeUrl() {
+            const urlFromParam = getUrlParameter('url');
+            const urlHistory = getUrlHistory();
+            
+            if (urlFromParam) {
+                // URL parameter takes precedence
+                document.getElementById('csvUrl').value = decodeURIComponent(urlFromParam);
+                saveUrlToHistory(urlFromParam);
+                loadCSV();
+            } else if (urlHistory.length > 0) {
+                // Load the most recent URL from history
+                document.getElementById('csvUrl').value = urlHistory[0];
+                loadCSV();
+            }
+        }
+        
+        // Initialize URL on page load
+        initializeUrl();
+        
+        // URL History dropdown functionality
+        function showUrlHistory() {
+            const dropdown = document.getElementById('urlHistoryDropdown');
+            const urlHistory = getUrlHistory();
+            
+            if (urlHistory.length === 0) {
+                dropdown.innerHTML = '<div style="padding: 0.75rem; color: var(--text-light); text-align: center;">No URL history</div>';
+            } else {
+                dropdown.innerHTML = '';
+                urlHistory.forEach((url, index) => {
+                    const item = document.createElement('div');
+                    item.style.cssText = 'padding: 0.75rem; border-bottom: 1px solid var(--border); cursor: pointer; transition: background 0.2s; display: flex; align-items: center; gap: 0.5rem;';
+                    item.innerHTML = `
+                        <i class="fas fa-link" style="color: var(--text-light); font-size: 0.8rem;"></i>
+                        <span style="flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.9rem;">${url}</span>
+                        <button onclick="removeFromHistory('${url}'); event.stopPropagation();" style="background: none; border: none; color: var(--text-light); cursor: pointer; padding: 0.25rem; font-size: 0.8rem;" title="Remove from history">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    `;
+                    item.addEventListener('click', () => {
+                        document.getElementById('csvUrl').value = url;
+                        dropdown.style.display = 'none';
+                        loadCSV();
+                    });
+                    item.addEventListener('mouseenter', () => {
+                        item.style.backgroundColor = 'var(--bg)';
+                    });
+                    item.addEventListener('mouseleave', () => {
+                        item.style.backgroundColor = 'transparent';
+                    });
+                    dropdown.appendChild(item);
+                });
+                
+                // Add clear all button
+                const clearAll = document.createElement('div');
+                clearAll.style.cssText = 'padding: 0.75rem; text-align: center; border-top: 1px solid var(--border); cursor: pointer; color: var(--primary); font-size: 0.9rem;';
+                clearAll.textContent = 'Clear All History';
+                clearAll.addEventListener('click', () => {
+                    localStorage.removeItem('urlHistory');
+                    dropdown.style.display = 'none';
+                });
+                dropdown.appendChild(clearAll);
+            }
+            
+            dropdown.style.display = 'block';
+        }
+        
+        function removeFromHistory(url) {
+            let urlHistory = getUrlHistory();
+            urlHistory = urlHistory.filter(item => item !== url);
+            localStorage.setItem('urlHistory', JSON.stringify(urlHistory));
+            showUrlHistory(); // Refresh the dropdown
+        }
+        
+        // Close dropdown when clicking outside
+        document.addEventListener('click', function(e) {
+            const dropdown = document.getElementById('urlHistoryDropdown');
+            const historyBtn = document.getElementById('historyBtn');
+            if (dropdown && historyBtn && !dropdown.contains(e.target) && !historyBtn.contains(e.target)) {
+                dropdown.style.display = 'none';
+            }
+        });
+
+        function loadCSV() {
+            const urlInput = document.getElementById('csvUrl').value;
+            const errorDiv = document.getElementById('error');
+            const errorMessage = document.getElementById('error-message');
+            errorDiv.style.display = 'none';
+            
+            // Save URL to history
+            saveUrlToHistory(urlInput);
+            
+            // Convert Google Sheets URL to CSV export URL
+            let csvUrl;
+            try {
+                const match = urlInput.match(/\/d\/([^\/]+)/);
+                if (!match) throw new Error('Invalid Google Sheets URL');
+                
+                const sheetId = match[1];
+                csvUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv`;
+            } catch (e) {
+                errorMessage.textContent = 'Please enter a valid Google Sheets URL';
+                errorDiv.style.display = 'flex';
+                return;
+            }
+            
+            document.getElementById('reportList').innerHTML = `
+                <div class="loading">
+                    <i class="fas fa-spinner fa-spin"></i>
+                    <p>Loading data...</p>
+                </div>
+            `;
+            
+            Papa.parse(csvUrl, {
+                download: true,
+                header: true,
+                skipEmptyLines: true,
+                complete: function(results) {
+                    // Process the data to ensure standard column names
+                    reports = standardizeColumnNames(results.data);
+                    
+                    // Process reports to identify date fields and status options
+                    processReportData(reports);
+                    
+                    // Apply initial filters and sorting
+                    filterReports();
+                },
+                error: function(error) {
+                    errorMessage.textContent = 'Error loading data: ' + error.message;
+                    errorDiv.style.display = 'flex';
+                    document.getElementById('reportList').innerHTML = `
+                        <div class="empty-state">
+                            <i class="fas fa-exclamation-triangle"></i>
+                            <p>Error loading data</p>
+                        </div>
+                    `;
+                }
+            });
+        }
+
+        function standardizeColumnNames(data) {
+            return data.map(row => {
+                const newRow = {};
+                
+                // Get all column names from the row
+                const columns = Object.keys(row);
+                
+                // Always use the first 6 columns in the exact order specified
+                // 1. Program Name (1st column)
+                newRow['Program Name'] = columns[0] ? row[columns[0]] : '';
+                // 2. Report Title (2nd column)
+                newRow['Report Title'] = columns[1] ? row[columns[1]] : '';
+                // 3. Status (3rd column)
+                newRow['Status'] = columns[2] ? row[columns[2]] : '';
+                // 4. Severity (4th column)
+                newRow['Severity'] = columns[3] ? row[columns[3]] : '';
+                // 5. Published Date (5th column)
+                newRow['Published Date'] = columns[4] ? row[columns[4]] : '';
+                // 6. Full Report (6th column)
+                newRow['Full Report'] = columns[5] ? row[columns[5]] : '';
+                
+                // Copy all other columns as-is (starting from 7th column)
+                for (let i = 6; i < columns.length; i++) {
+                    newRow[columns[i]] = row[columns[i]];
+                }
+                
+                return newRow;
+            });
+        }
+
+        function processReportData(reports) {
+            statusOptions = new Set();
+            let detectedDateField = null;
+            
+            reports.forEach(report => {
+                // Find status values
+                if (report['Status']) {
+                    const normalizedStatus = report['Status'].toString().trim().toLowerCase();
+                    if (normalizedStatus) {
+                        statusOptions.add(report['Status'].toString().trim());
+                    }
+                }
+
+                // Try to detect date field if not already found
+                if (!detectedDateField) {
+                    for (const field of dateFields) {
+                        if (report[field] && isDateLike(report[field])) {
+                            detectedDateField = field;
+                            break;
+                        }
+                    }
+                }
+            });
+            
+            renderStatusCheckboxes();
+
+            // Process dates in all reports
+            reports.forEach(report => {
+                // Try to find a date field
+                let dateField = detectedDateField;
+                if (!dateField) {
+                    for (const field in report) {
+                        if (isDateLike(report[field])) {
+                            dateField = field;
+                            break;
+                        }
+                    }
+                }
+                
+                // Store the parsed date if found
+                if (dateField && report[dateField]) {
+                    report._date = parseDate(report[dateField]);
+                    report._dateField = dateField;
+                } else {
+                    report._date = new Date(0); // Default to epoch if no date found
+                }
+            });
+            
+            filteredReports = [...reports];
+        }
+
+        function isDateLike(value) {
+            if (!value) return false;
+            const str = value.toString().trim();
+            
+            // Check for common date formats
+            return (
+                // ISO dates (2023-01-15)
+                /^\d{4}-\d{2}-\d{2}/.test(str) ||
+                // US dates (01/15/2023)
+                /^\d{1,2}\/\d{1,2}\/\d{4}/.test(str) ||
+                // European dates (15/01/2023)
+                /^\d{1,2}\.\d{1,2}\.\d{4}/.test(str) ||
+                // Month names (January 15, 2023)
+                /^[A-Za-z]{3,9} \d{1,2},? \d{4}/.test(str)
+            );
+        }
+
+        function parseDate(dateStr) {
+            if (!dateStr) return new Date(0);
+            
+            // Try parsing as ISO date first
+            let date = new Date(dateStr);
+            if (!isNaN(date.getTime())) return date;
+            
+            // Try parsing as US date (MM/DD/YYYY)
+            const usDateParts = dateStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+            if (usDateParts) {
+                date = new Date(`${usDateParts[3]}-${usDateParts[1]}-${usDateParts[2]}`);
+                if (!isNaN(date.getTime())) return date;
+            }
+            
+            // Try parsing as European date (DD.MM.YYYY or DD/MM/YYYY)
+            const euDateParts = dateStr.match(/^(\d{1,2})[\.\/](\d{1,2})[\.\/](\d{4})/);
+            if (euDateParts) {
+                date = new Date(`${euDateParts[3]}-${euDateParts[2]}-${euDateParts[1]}`);
+                if (!isNaN(date.getTime())) return date;
+            }
+            
+            // Try parsing with month names (January 15, 2023 or Jan 15, 2023)
+            const monthDateParts = dateStr.match(/^([A-Za-z]{3,9}) (\d{1,2}),? (\d{4})/);
+            if (monthDateParts) {
+                date = new Date(`${monthDateParts[1]} ${monthDateParts[2]}, ${monthDateParts[3]}`);
+                if (!isNaN(date.getTime())) return date;
+            }
+            
+            // Default to epoch if we can't parse
+            return new Date(0);
+        }
+
+        function filterReports() {
+            const searchTerm = document.getElementById('searchInput').value;
+            const programSearch = document.getElementById('programSearch').value.toLowerCase();
+            // Severity checkboxes
+            const severityChecked = Array.from(document.querySelectorAll('#severityPanel input[type=checkbox]:checked')).map(cb => cb.value);
+            // Status checkboxes
+            const statusChecked = Array.from(document.querySelectorAll('#statusPanel input[type=checkbox]:checked')).map(cb => cb.value);
+            const regexInput = document.getElementById('regexInput').value;
+            // Regex for Search All Fields
+            let searchRegex = null;
+            let searchRegexError = '';
+            if (searchTerm) {
+                try {
+                    searchRegex = new RegExp(searchTerm, 'i');
+                } catch (e) {
+                    searchRegexError = e.message;
+                }
+            }
+            // Regex for Negative Regex Search
+            let negativeRegex = null;
+            let negativeRegexError = '';
+            if (regexInput) {
+                try {
+                    negativeRegex = new RegExp(regexInput, 'i');
+                } catch (e) {
+                    negativeRegexError = e.message;
+                }
+            }
+            // Hide error by default
+            document.getElementById('error').style.display = 'none';
+            // Show regex error if any
+            if (searchRegexError) {
+                document.getElementById('error-message').textContent = 'Invalid Search All Fields regex: ' + searchRegexError;
+                document.getElementById('error').style.display = 'flex';
+            } else if (negativeRegexError) {
+                document.getElementById('error-message').textContent = 'Invalid Negative Regex: ' + negativeRegexError;
+                document.getElementById('error').style.display = 'flex';
+            }
+            filteredReports = reports.filter(report => {
+                // Search All Fields (regex positive match or fallback to substring)
+                let matchesSearch = true;
+                if (searchTerm) {
+                    matchesSearch = false;
+                    for (const key in report) {
+                        if (report[key]) {
+                            if (searchRegex && !searchRegexError) {
+                                if (searchRegex.test(report[key].toString())) {
+                                    matchesSearch = true;
+                                    break;
+                                }
+                            } else if (!searchRegex) { // fallback to substring if regex invalid
+                                if (report[key].toString().toLowerCase().includes(searchTerm.toLowerCase())) {
+                                    matchesSearch = true;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+                // Program Name search filter
+                let matchesProgram = true;
+                if (programSearch) {
+                    matchesProgram = report['Program Name'] && 
+                                     report['Program Name'].toString().toLowerCase().includes(programSearch);
+                }
+                // Severity filter (multi)
+                let matchesSeverity = true;
+                if (severityChecked.length > 0) {
+                    const severity = report['Severity'] ? report['Severity'].toString().toLowerCase() : '';
+                    matchesSeverity = severityChecked.some(val =>
+                        severity.includes(val) || (val === 'info' && severity.includes('informative'))
+                    );
+                }
+                // Status filter (multi)
+                let matchesStatus = true;
+                if (statusChecked.length > 0) {
+                    const status = report['Status'] ? report['Status'].toString().toLowerCase().trim() : '';
+                    matchesStatus = statusChecked.some(val => status.includes(val));
+                }
+                // Negative Regex filter (exclude matches)
+                let matchesNegativeRegex = true;
+                if (negativeRegex && !negativeRegexError) {
+                    let anyFieldMatches = false;
+                    for (const key in report) {
+                        if (report[key] && negativeRegex.test(report[key].toString())) {
+                            anyFieldMatches = true;
+                            break;
+                        }
+                    }
+                    matchesNegativeRegex = !anyFieldMatches;
+                }
+                return matchesSearch && matchesProgram && matchesSeverity && matchesStatus && matchesNegativeRegex;
+            });
+            sortReports();
+        }
+
+        function sortReports() {
+            const sortValue = document.getElementById('sortFilter').value;
+            if (sortValue === 'newest') {
+                filteredReports.sort((a, b) => b._date - a._date);
+            } else if (sortValue === 'oldest') {
+                filteredReports.sort((a, b) => a._date - b._date);
+            } else if (sortValue === 'severity') {
+                // Custom order: Critical > High > Medium > Low > Info
+                const sevOrder = { 'critical': 1, 'high': 2, 'medium': 3, 'low': 4, 'info': 5, 'informative': 5 };
+                filteredReports.sort((a, b) => {
+                    const aSev = (a['Severity'] || '').toLowerCase();
+                    const bSev = (b['Severity'] || '').toLowerCase();
+                    const aVal = Object.keys(sevOrder).find(key => aSev.includes(key)) ? sevOrder[Object.keys(sevOrder).find(key => aSev.includes(key))] : 99;
+                    const bVal = Object.keys(sevOrder).find(key => bSev.includes(key)) ? sevOrder[Object.keys(sevOrder).find(key => bSev.includes(key))] : 99;
+                    return aVal - bVal;
+                });
+            } else if (sortValue === 'program') {
+                filteredReports.sort((a, b) => {
+                    const aName = (a['Program Name'] || '').toLowerCase();
+                    const bName = (b['Program Name'] || '').toLowerCase();
+                    return aName.localeCompare(bName);
+                });
+            } else if (sortValue === 'status') {
+                filteredReports.sort((a, b) => {
+                    const aStatus = (a['Status'] || '').toLowerCase();
+                    const bStatus = (b['Status'] || '').toLowerCase();
+                    return aStatus.localeCompare(bStatus);
+                });
+            } else if (sortValue === 'title') {
+                filteredReports.sort((a, b) => {
+                    const aTitle = (a['Report Title'] || '').toLowerCase();
+                    const bTitle = (b['Report Title'] || '').toLowerCase();
+                    return aTitle.localeCompare(bTitle);
+                });
+            }
+            displayReportList();
+        }
+
+        function displayReportList() {
+            const listContainer = document.getElementById('reportList');
+            const reportCount = document.getElementById('reportCount');
+            
+            reportCount.textContent = `Reports: ${filteredReports.length}`;
+            
+            if (filteredReports.length === 0) {
+                listContainer.innerHTML = `
+                    <div class="empty-state">
+                        <i class="fas fa-search"></i>
+                        <p>No reports found</p>
+                    </div>
+                `;
+                return;
+            }
+            
+            listContainer.innerHTML = '';
+            
+            filteredReports.forEach((report, index) => {
+                const item = document.createElement('div');
+                item.className = 'list-item';
+                
+                const severity = getSeverityClass(report['Severity']);
+                
+                let dateHtml = '';
+                if (report._date && report._date.getTime() !== new Date(0).getTime()) {
+                    const dateStr = report._date.toLocaleDateString();
+                    dateHtml = `<div class="report-date">${dateStr}</div>`;
+                }
+                
+                item.innerHTML = `
+                    <div class="program-name">
+                        <span class="report-number">${index + 1}.</span>
+                        ${escapeHtml(report['Program Name'] || 'Unnamed Program')}
+                    </div>
+                    <div class="report-title">${escapeHtml(report['Report Title'] || 'Untitled Report')}</div>
+                    ${severity ? `<span class="severity ${severity.class}">${severity.text}</span>` : ''}
+                    ${report['Status'] ? `<div style="margin-top: 0.5rem; font-size: 0.85rem; color: var(--text-light)">Status: ${escapeHtml(report['Status'])}</div>` : ''}
+                    ${dateHtml}
+                `;
+                
+                item.addEventListener('click', () => {
+                    document.querySelectorAll('.list-item').forEach(el => {
+                        el.classList.remove('selected');
+                    });
+                    
+                    item.classList.add('selected');
+                    
+                    displayFullReport(report);
+                });
+                
+                listContainer.appendChild(item);
+            });
+            
+            if (!document.querySelector('.list-item.selected') && filteredReports.length > 0) {
+                const firstItem = listContainer.querySelector('.list-item');
+                if (firstItem) {
+                    firstItem.classList.add('selected');
+                    displayFullReport(filteredReports[0]);
+                }
+            }
+        }
+
+        function getSeverityClass(severityText) {
+            if (!severityText) return null;
+            
+            const severity = severityText.toLowerCase().trim();
+            
+            if (severity.includes('critical')) return { class: 'critical', text: 'Critical' };
+            if (severity.includes('high')) return { class: 'high', text: 'High' };
+            if (severity.includes('medium')) return { class: 'medium', text: 'Medium' };
+            if (severity.includes('low')) return { class: 'low', text: 'Low' };
+            if (severity.includes('info') || severity.includes('informative')) return { class: 'info', text: 'Informative' };
+            
+            return null;
+        }
+
+        function displayFullReport(report) {
+            const reportContent = document.getElementById('reportContent');
+            const fullReport = report['Full Report'] || '*No report content available*';
+            let processedReport = convertCustomLinks(fullReport);
+            // Encode < and > only outside code blocks and inline code
+            processedReport = encodeAngleBracketsOutsideCode(processedReport);
+            const reportBodyHtml = DOMPurify.sanitize(marked.parse(processedReport));
+            let metadataHtml = '<div class="metadata"><h2>Metadata</h2><dl>';
+            
+            const standardColumns = [
+                'Program Name',
+                'Report Title',
+                'Status',
+                'Severity',
+                'Published Date'
+            ];
+            
+            standardColumns.forEach(key => {
+                if (report[key]) {
+                    const severityClass = key === 'Severity' ? getSeverityClass(report[key])?.class : '';
+                    metadataHtml += `
+                        <dt>${escapeHtml(key)}</dt>
+                        <dd>${key === 'Severity' && severityClass ? 
+                            `<span class="severity ${severityClass}">${escapeHtml(report[key])}</span>` : 
+                            escapeHtml(report[key])}</dd>
+                    `;
+                }
+            });
+            
+            const otherColumns = Object.keys(report)
+                .filter(key => !standardColumns.includes(key) && !key.startsWith('_') && key !== 'Full Report')
+                .sort();
+            
+            otherColumns.forEach(key => {
+                if (report[key]) {
+                    metadataHtml += `
+                        <dt>${escapeHtml(key)}</dt>
+                        <dd>${escapeHtml(report[key])}</dd>
+                    `;
+                }
+            });
+            
+            metadataHtml += '</dl></div>';
+            
+            reportContent.innerHTML = `
+                ${metadataHtml}
+                <div class="report-body">${reportBodyHtml}</div>
+            `;
+        }
+
+        function convertCustomLinks(text) {
+            if (!text) return text;
+            
+            return text.replace(/\[([^|\]]+)\|([^\]]+)\]/g, '[$1]($2)');
+        }
+
+        function escapeHtml(unsafe) {
+            if (!unsafe) return '';
+            return unsafe
+                .toString()
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+        }
+
+        // Encode < and > outside code blocks and inline code
+        function encodeAngleBracketsOutsideCode(text) {
+            // Split by code blocks (```...```)
+            const codeBlockRegex = /(```[\s\S]*?```)/g;
+            let segments = text.split(codeBlockRegex);
+            segments = segments.map(segment => {
+                if (segment.startsWith('```') && segment.endsWith('```')) {
+                    // Code block, leave as is
+                    return segment;
+                } else {
+                    // Now handle inline code (`...`)
+                    // Split by inline code
+                    const inlineCodeRegex = /(`[^`]*`)/g;
+                    let parts = segment.split(inlineCodeRegex);
+                    parts = parts.map(part => {
+                        if (part.startsWith('`') && part.endsWith('`')) {
+                            return part; // inline code, leave as is
+                        } else {
+                            // Encode < and >
+                            return part.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                        }
+                    });
+                    return parts.join('');
+                }
+            });
+            return segments.join('');
+        }
+
+        // Populate severity checkboxes in dropdown
+        function renderSeverityCheckboxes() {
+            const severities = [
+                { value: 'critical', label: 'Critical' },
+                { value: 'high', label: 'High' },
+                { value: 'medium', label: 'Medium' },
+                { value: 'low', label: 'Low' },
+                { value: 'info', label: 'Informative' }
+            ];
+            const panel = document.getElementById('severityPanel');
+            panel.innerHTML = '';
+            severities.forEach(sev => {
+                const id = `sev_${sev.value}`;
+                const box = document.createElement('label');
+                box.innerHTML = `<input type="checkbox" value="${sev.value}" id="${id}" onchange="updateSummary('severity'); filterReports(); event.stopPropagation();"> ${sev.label}`;
+                panel.appendChild(box);
+            });
+            // Add clear button
+            const clearBtn = document.createElement('button');
+            clearBtn.className = 'clear-btn';
+            clearBtn.type = 'button';
+            clearBtn.textContent = 'Clear';
+            clearBtn.onclick = function(e) {
+                e.stopPropagation();
+                Array.from(panel.querySelectorAll('input[type=checkbox]')).forEach(cb => cb.checked = false);
+                updateSummary('severity');
+                filterReports();
+            };
+            panel.appendChild(clearBtn);
+            updateSummary('severity');
+        }
+        renderSeverityCheckboxes();
+
+        // Populate status checkboxes in dropdown
+        function renderStatusCheckboxes() {
+            const panel = document.getElementById('statusPanel');
+            panel.innerHTML = '';
+            statusOptions.forEach(status => {
+                const value = status.toLowerCase();
+                const id = `status_${value.replace(/[^a-z0-9]/g, '_')}`;
+                const box = document.createElement('label');
+                box.innerHTML = `<input type="checkbox" value="${value}" id="${id}" onchange="updateSummary('status'); filterReports(); event.stopPropagation();"> ${status}`;
+                panel.appendChild(box);
+            });
+            // Add clear button
+            const clearBtn = document.createElement('button');
+            clearBtn.className = 'clear-btn';
+            clearBtn.type = 'button';
+            clearBtn.textContent = 'Clear';
+            clearBtn.onclick = function(e) {
+                e.stopPropagation();
+                Array.from(panel.querySelectorAll('input[type=checkbox]')).forEach(cb => cb.checked = false);
+                updateSummary('status');
+                filterReports();
+            };
+            panel.appendChild(clearBtn);
+            updateSummary('status');
+        }
+
+        // Update summary text for dropdowns
+        function updateSummary(type) {
+            let checked, summary, allText;
+            if (type === 'severity') {
+                checked = Array.from(document.querySelectorAll('#severityPanel input[type=checkbox]:checked'));
+                summary = document.getElementById('severitySummary');
+                allText = 'All Severities';
+            } else {
+                checked = Array.from(document.querySelectorAll('#statusPanel input[type=checkbox]:checked'));
+                summary = document.getElementById('statusSummary');
+                allText = 'All Statuses';
+            }
+            if (checked.length === 0) {
+                summary.textContent = allText;
+            } else if (checked.length === 1) {
+                summary.textContent = checked[0].parentElement.textContent.trim();
+            } else {
+                summary.textContent = `${checked.length} selected`;
+            }
+        }
+
+        // Dropdown open/close logic and accessibility
+        function setDropdownHandlers(type) {
+            const dropdown = document.getElementById(type + 'Dropdown');
+            const panel = document.getElementById(type + 'Panel');
+            dropdown.addEventListener('click', function(e) {
+                e.stopPropagation();
+                // Toggle open/close
+                const isOpen = dropdown.classList.contains('open');
+                closeDropdown('severity');
+                closeDropdown('status');
+                if (!isOpen) {
+                    dropdown.classList.add('open');
+                    panel.style.display = 'flex';
+                    panel.querySelector('input[type=checkbox]')?.focus();
+                } else {
+                    dropdown.classList.remove('open');
+                    panel.style.display = 'none';
+                }
+            });
+            dropdown.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    dropdown.click();
+                } else if (e.key === 'Escape') {
+                    closeDropdown(type);
+                }
+            });
+        }
+        function closeDropdown(type) {
+            const dropdown = document.getElementById(type + 'Dropdown');
+            const panel = document.getElementById(type + 'Panel');
+            if (dropdown) dropdown.classList.remove('open');
+            if (panel) panel.style.display = 'none';
+        }
+        // Close dropdowns when clicking outside or pressing Escape
+        document.addEventListener('mousedown', function(e) {
+            ['severity', 'status'].forEach(type => {
+                const dropdown = document.getElementById(type + 'Dropdown');
+                const panel = document.getElementById(type + 'Panel');
+                if (dropdown && panel && !dropdown.contains(e.target)) {
+                    dropdown.classList.remove('open');
+                    panel.style.display = 'none';
+                }
+            });
+        });
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                closeDropdown('severity');
+                closeDropdown('status');
+            }
+        });
+        setDropdownHandlers('severity');
+        setDropdownHandlers('status');
+
+        // Minimize/Maximize logic
+        document.addEventListener('DOMContentLoaded', function() {
+            const minMaxBtn = document.getElementById('minMaxBtn');
+            const container = document.querySelector('.container');
+            let isMinimized = false;
+
+            if (minMaxBtn && container) {
+                minMaxBtn.addEventListener('click', function() {
+                    const listContainer = document.getElementById('listContainer');
+                    isMinimized = !isMinimized;
+                    
+                    if (isMinimized) {
+                        // Minimize
+                        container.classList.add('minimized');
+                        minMaxBtn.title = 'Maximize left panel';
+                        minMaxBtn.querySelector('i').className = 'fas fa-angle-right';
+                    } else {
+                        // Un-minimize
+                        container.classList.remove('minimized');
+                        minMaxBtn.title = 'Minimize left panel';
+                        minMaxBtn.querySelector('i').className = 'fas fa-angle-left';
+                    }
+                });
+            }
+        });
+    </script>
+</body>
+</html>
